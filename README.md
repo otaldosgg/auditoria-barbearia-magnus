@@ -1,5 +1,5 @@
 # 🔒 Relatório de Segurança — Supabase / Magnus Barbearia
-**Data:** 31/07/2026 · **Método:** playwright, node, nmap, curl e supabase sdk.
+**Data:** 31/07/2026 · **Ferramentas:** playwright, node, nmap, curl e supabase sdk.
 
 ---
 
