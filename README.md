@@ -1,5 +1,5 @@
 # 🔒 Relatório de Segurança — Supabase / Magnus Barbearia
-**Data:** 31/07/2026 · **Método:** teste como atacante, apenas com chave pública (anon key)
+**Data:** 31/07/2026 · **Método:** playwright, node, nmap, curl e supabase sdk.
 
 ---
 
