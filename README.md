@@ -9,25 +9,11 @@
 |---|---|
 | **Nível de acesso obtido** | 0/10 |
 | **Dados expostos** | Nenhum |
-| **Banco de dados** | Vazio / inacessível via API pública |
+| **Banco de dados** | API ativa, banco vazio (nenhuma tabela/dado acessível) |
 | **Testes executados** | 70+ (100% bloqueados) |
 | **Falhas reais encontradas** | 7 (0 críticas de dados, 1 crítica operacional) |
 
-**Conclusão:** o banco está protegido contra acesso externo. As falhas encontradas são de configuração (headers, rate limiting, projeto pausado) — não de exposição de dados.
-
----
-
-## O que mudou desde a auditoria de 29-30/07
-
-Testes anteriores tinham conclusões baseadas em suposição (bundles JS, projeto pausado). Os testes de hoje foram diretos na API e **desmentiram** os pontos mais alarmantes:
-
-| Afirmação anterior | Resultado hoje |
-|---|---|
-| Anon key pode acessar qualquer tabela | ❌ Desmentido — 70+ testes, todos 404 |
-| Tabelas descobertas via bundles JS | ❌ Desmentido — nenhuma tabela existe |
-| Firestore com coleções expostas | ⚠️ Não verificável (auth desabilitado) |
-| Headers de segurança ausentes | ✅ Confirmado |
-| Rate limiting ausente | ✅ Confirmado |
+**Conclusão:** o banco está protegido contra acesso externo. A API está ativa (banco vazio, mas acessível). As falhas encontradas são de configuração (headers, rate limiting) — não de exposição de dados.
 
 ---
 
@@ -52,20 +38,39 @@ Testes anteriores tinham conclusões baseadas em suposição (bundles JS, projet
 ## Falhas identificadas
 
 ### 🔴 Crítica
-| Falha | Impacto | Ação |
-|---|---|---|
-| **Supabase pausado** | Ao reativar, anon key pode dar acesso total se RLS não estiver configurado | Reativar e testar RLS **antes** de qualquer outra coisa |
+
+**RLS (Row Level Security) não confirmado**
+O banco está vazio hoje, mas a API está ativa (não mais pausada). Isso significa que, assim que dados forem inseridos, a anon key exposta publicamente pode dar acesso de leitura/escrita irrestrito a qualquer tabela — a menos que RLS esteja configurado corretamente. Como não há tabelas ainda, não foi possível confirmar se RLS está ligado. **Ação:** configurar e testar RLS antes de popular qualquer tabela em produção.
 
 ### 🟡 Médias
-| Falha | Ação recomendada |
-|---|---|
-| Rate limiting ausente (0 bloqueios em 10 tentativas de login) | Implementar throttling (ex: `express-rate-limit`, 5 tentativas/15min) |
-| `X-Frame-Options` ausente (clickjacking) | `response.headers.set('X-Frame-Options', 'DENY')` |
-| `X-Content-Type-Options` ausente | `response.headers.set('X-Content-Type-Options', 'nosniff')` |
-| CSP ausente | Configurar `Content-Security-Policy` restritiva |
-| CSRF tokens ausentes em formulários | Implementar proteção CSRF nativa do Next.js |
-| Firestore referenciado sem auth configurado | Remover referências se não usado, ou configurar auth |
-| Anon key exposta em bundles JS | Normal por design — mas mover operações sensíveis para server-side |
+
+**Rate limiting ausente**
+10 tentativas de login em 2,5 segundos, zero bloqueios ou CAPTCHA. Abre a porta pra ataques de força bruta em contas de usuário.
+→ *Ação:* throttling no endpoint de login (ex: `express-rate-limit`, 5 tentativas/15min).
+
+**Clickjacking — header `X-Frame-Options` ausente**
+Sem esse header, um site malicioso pode carregar sua aplicação dentro de um `<iframe>` invisível e sobrepor botões falsos por cima da interface real. O usuário pensa que está clicando em algo do próprio site, mas na verdade está clicando numa camada invisível controlada pelo atacante (ex: "curtir" vira "autorizar transferência").
+→ *Ação:* `response.headers.set('X-Frame-Options', 'DENY')`
+
+**MIME sniffing — header `X-Content-Type-Options` ausente**
+Sem esse header, o navegador tenta "adivinhar" o tipo real de um arquivo em vez de confiar no `Content-Type` declarado pelo servidor. Isso permite que um atacante suba um arquivo disfarçado (ex: um `.txt` com código dentro) e o navegador execute como script/HTML, abrindo caminho pra XSS via upload de arquivo.
+→ *Ação:* `response.headers.set('X-Content-Type-Options', 'nosniff')`
+
+**CSP (Content-Security-Policy) ausente**
+Sem CSP, não há uma segunda camada de defesa contra XSS — se um script malicioso for injetado (via input não sanitizado, dependência comprometida, etc.), o navegador executa sem restrição.
+→ *Ação:* configurar `Content-Security-Policy` restritiva, permitindo só os domínios necessários.
+
+**CSRF tokens ausentes em formulários**
+Sem token CSRF, um site externo pode induzir o navegador de um usuário já logado a enviar uma requisição (ex: POST de troca de senha) sem o usuário saber.
+→ *Ação:* implementar proteção CSRF nativa do Next.js em todos os formulários autenticados.
+
+**Firestore referenciado sem auth configurado**
+Coleções antigas (`magnus-barbearia`, `barbearia`) aparecem em bundles JS, mas o Firebase Auth está desabilitado — não foi possível confirmar se ainda há dados lá.
+→ *Ação:* remover referências se não estiver em uso, ou configurar auth corretamente se estiver.
+
+**Anon key exposta em bundles JS**
+Normal por design (chave anônima é pública em qualquer app Supabase) — o risco real está 100% ligado à falha crítica de RLS acima, não à exposição em si.
+→ *Ação:* mover operações sensíveis para server-side (API routes) como camada extra de proteção.
 
 ### 🟢 Baixas
 - `/register` retorna 404 — decisão arquitetural, não é falha
@@ -76,7 +81,7 @@ Testes anteriores tinham conclusões baseadas em suposição (bundles JS, projet
 ## Plano de ação
 
 **Imediato**
-1. Reativar Supabase e testar RLS antes de expor qualquer dado
+1. Confirmar e testar RLS antes de popular qualquer tabela em produção
 2. Implementar rate limiting no login e endpoints de API
 
 **Curto prazo**
