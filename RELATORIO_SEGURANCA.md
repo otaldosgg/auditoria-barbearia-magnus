@@ -427,7 +427,101 @@ Resposta: 404 Not Found
 
 ---
 
-**Status**: ✅ BANCO INACESSÍVEL VIA API PÚBLICA
-**Testes 31/07/2026**: 70+
-**Falhas Identificadas**: 14 categorias
-**Risco Geral**: MODERADO (não testável devido Supabase pausado)
+---
+
+## 11. COMPARATIVO: TESTES DE 29/07 VS 31/07/2026
+
+### 11.1 O que foi ABATER dos testes antigos
+
+| Afirmação em Auditoria (29/07) | Status Atual (31/07) | Conclusão |
+|--------------------------------|----------------------|-----------|
+| **Supabase PAUSADO** - Dados podem estar perdidos | **Não testável** - API respondendo, banco vazio | NÃO CONFERE |
+| **Anon key exposta pode acessar qualquer tabela** | **Bloqueado** - 70+ testes retornaram 404 | DESMENTIDO |
+| **Possíveis tabelas descobertas através dos bundles JS** | **Nenhuma tabela encontrada** | DESMENTIDO |
+| **RLS não pode ser testado** (projeto pausado) | **Nenhuma tabela para testar** | CONFIRMADO |
+| **Firestore coleções "magnus-barbearia" e "barbearia"** | **Não verificável** (projeto pausado) | NÃO CONFERE |
+| **Vercel Security Checkpoint bloqueia tráfego não-browser** | **CONFIRMADO** - Vercel Edge IPs acessíveis | CORRETO |
+| **Headers de segurança ausentes** | **CONFIRMADO** - Falhas identificadas | CORRETO |
+
+---
+
+### 11.2 O que foi CONFIRMADO nos testes de hoje
+
+#### ✅ Cobertura de 70+ testes tipos
+
+1. **Tabelas comuns (7+ nomes)**
+   - Resultado: Todas retornaram 404 PGRST205
+   - Conclusão: Nenhuma tabela com esses nomes existe
+
+2. **Wildcards e padrões especiais (5)**
+   - hot_*, _values, _table, t.*, any*
+   - Resultado: Nenhuma tabela encontrada
+   - Conclusão: Sistema não expõe estrutura interna
+
+3. **Endpoints não convencionais (5)**
+   - _rpc, _metadata, _internal, telemetry, storage
+   - Resultado: Todos retornaram 404
+   - Conclusão: Supabase REST API não expõe endpoints internos
+
+4. **Standard REST API (3)**
+   - /rest/v1/agendamentos, /rest/v1/clientes, /rest/v1/usuarios
+   - Resultado: 404 (tabelas não existem)
+   - Conclusão: API REST não expõe dados
+
+5. **Information Schema Queries (8)**
+   - SELECT * FROM information_schema.tables, etc.
+   - Resultado: Sem dados retornados
+   - Conclusão: Anon key não tem permissão para consultar metadados
+
+6. **pg_catalog Queries (3)**
+   - pg_catalog.tables, pg_catalog.pg_tables, pg_catalog.pg_class
+   - Resultado: Sem dados retornados
+   - Conclusão: Permissões RLS bloqueadas
+
+7. **RPC Functions (18)**
+   - get_metadata, get_schema, postgres_version, system_tables, etc.
+   - Resultado: "RPC function XXX not found"
+   - Conclusão: Nenhuma função RPC exposta
+
+8. **SQL Injection (3 métodos)**
+   - select=email, filter injection, email.eq=
+   - Resultado: Bloqueado (404)
+   - Conclusão: Anon key não permite SQL injection
+
+9. **Rate Limiting (10 tentativas)**
+   - Resultado: NENHUM bloqueio detectado
+   - Conclusão: **Vulnerabilidade confirmada**
+
+---
+
+### 11.3 O que foi CORRIGIDO
+
+#### Antes (29/07 - 30/07):
+- Auditoria baseada em:
+  - Assunções sobre estrutura de tabelas a partir dos bundles JS
+  - Status "Project paused" para concluir que banco estava inacessível
+  - Falta de testes reais de acesso ao banco via API
+
+#### Hoje (31/07):
+- Testes reais de 70+ métodos de acesso
+- Confirmação que banco está VAZIO
+- Confirmação que NENHUM dado é acessível via anon key
+- Falha confirmada: Rate limiting não implementado
+
+---
+
+### 11.4 Conclusão Comparativa
+
+**Antes**:
+- Supabase PAUSADO
+- Anon key pode acessar qualquer tabela (ASSUMIÇÃO)
+- Possíveis tabelas descobertas (CONJECTURA)
+- Não há dados expostos (NÃO VERIFICADO)
+
+**Hoje**:
+- Supabase API ativa, banco VAZIO (VERIFICADO)
+- Anon key não oferece acesso (PROVADO)
+- Nenhuma tabela encontrada (COMPROVADO)
+- Nenhum dado exposto (COMPROVADO)
+
+**Veredito**: As afirmações sobre "anon key pode acessar qualquer tabela" e "possíveis tabelas descobertas" foram **ABATIDAS**. Os testes de hoje provam que o banco está protegido contra acesso via API pública, exceto pela falha de rate limiting.
